@@ -15,7 +15,7 @@ source:
     # https://sources.debian.org/src/libpng1.6/1.6.36-2/debian/patches/
     - revert-1ceaa83a844cd3ecef25279d60720f910b96f297.patch
     - revert-b66ed711315c46ef6c556c83c0074ecdcbd9937f.patch
-    - revert-7734cda20cf1236aef60f3bbd2267c97bbb40869.patchg
+    - revert-7734cda20cf1236aef60f3bbd2267c97bbb40869.patch
 
 build:
   number: 1000
