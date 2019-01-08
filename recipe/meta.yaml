@@ -23,6 +23,7 @@ requirements:
     - libtool  # [not win]
     - automake  # [not win]
     - {{ compiler('c') }}
+    - make      # [not win]
   host:
     - zlib
   run:
