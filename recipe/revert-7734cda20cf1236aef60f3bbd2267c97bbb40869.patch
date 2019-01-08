@@ -1,0 +1,338 @@
+Description: revert for now arm improvements, they make the testsuite FTBFS on arm64
+commit 7734cda20cf1236aef60f3bbd2267c97bbb40869
+Author: Richard Townsend <Richard.Townsend@arm.com>
+Date:   Thu Jan 25 19:03:04 2018 +0000
+
+    Optimize png_do_expand_palette for ARM
+    
+    ARM-specific optimization processes 8 or 4 pixels at once.
+    Improves performance by around 10-22% on a recent ARM Chromebook.
+
+Index: libpng1.6/CMakeLists.txt
+===================================================================
+--- libpng1.6.orig/CMakeLists.txt
++++ libpng1.6/CMakeLists.txt
+@@ -83,8 +83,7 @@
+     set(libpng_arm_sources
+       arm/arm_init.c
+       arm/filter_neon.S
+-      arm/filter_neon_intrinsics.c
+-      arm/palette_neon_intrinsics.c)
++      arm/filter_neon_intrinsics.c)
+ 
+     if(${PNG_ARM_NEON} STREQUAL "on")
+       add_definitions(-DPNG_ARM_NEON_OPT=2)
+Index: libpng1.6/Makefile.am
+===================================================================
+--- libpng1.6.orig/Makefile.am
++++ libpng1.6/Makefile.am
+@@ -95,8 +95,7 @@
+ 
+ if PNG_ARM_NEON
+ libpng@PNGLIB_MAJOR@@PNGLIB_MINOR@_la_SOURCES += arm/arm_init.c\
+-	arm/filter_neon.S arm/filter_neon_intrinsics.c \
+-	arm/palette_neon_intrinsics.c
++	arm/filter_neon.S arm/filter_neon_intrinsics.c
+ endif
+ 
+ if PNG_MIPS_MSA
+Index: libpng1.6/arm/palette_neon_intrinsics.c
+===================================================================
+--- libpng1.6.orig/arm/palette_neon_intrinsics.c
++++ /dev/null
+@@ -1,137 +0,0 @@
+-/* palette_neon_intrinsics.c - NEON optimised palette expansion functions
+- *
+- * Copyright (c) 2017-2018 Arm Holdings. All rights reserved.
+- * Written by Richard Townsend <Richard.Townsend@arm.com>, February 2017.
+- *
+- * This code is released under the libpng license.
+- * For conditions of distribution and use, see the disclaimer
+- * and license in png.h
+- */
+-
+-#include "../pngpriv.h"
+-
+-#if PNG_ARM_NEON_IMPLEMENTATION == 1
+-
+-#include <arm_neon.h>
+-
+-/* Build an RGBA palette from the RGB and separate alpha palettes. */
+-void
+-png_riffle_palette_rgba(png_structrp png_ptr, png_row_infop row_info)
+-{
+-   png_const_colorp palette = png_ptr->palette;
+-   png_bytep riffled_palette = png_ptr->riffled_palette;
+-   png_const_bytep trans_alpha = png_ptr->trans_alpha;
+-   int num_trans = png_ptr->num_trans;
+-
+-   if (row_info->bit_depth != 8) {
+-      png_error(png_ptr, "bit_depth must be 8 for png_riffle_palette_rgba");
+-      return;
+-   }
+-
+-   /* Initially black, opaque. */
+-   uint8x16x4_t w = {{
+-      vdupq_n_u8(0x00),
+-      vdupq_n_u8(0x00),
+-      vdupq_n_u8(0x00),
+-      vdupq_n_u8(0xff),
+-   }};
+-
+-   int i;
+-   /* First, riffle the RGB colours into a RGBA palette, the A value is
+-    * set to opaque for now. */
+-   for (i = 0; i < (1 << row_info->bit_depth); i += 16) {
+-      uint8x16x3_t v = vld3q_u8((png_const_bytep)(palette + i));
+-      w.val[0] = v.val[0];
+-      w.val[1] = v.val[1];
+-      w.val[2] = v.val[2];
+-      vst4q_u8(riffled_palette + (i << 2), w);
+-   }
+-
+-   /* Fix up the missing transparency values. */
+-   for (i = 0; i < num_trans; i++) {
+-      riffled_palette[(i << 2) + 3] = trans_alpha[i];
+-   }
+-}
+-
+-
+-/* Expands a palettized row into RGBA. */
+-int
+-png_do_expand_palette_neon_rgba(png_structrp png_ptr, png_row_infop row_info,
+-   png_const_bytep row, const png_bytepp ssp, const png_bytepp ddp)
+-{
+-
+-   png_uint_32 row_width = row_info->width;
+-   const png_uint_32 *riffled_palette = (const png_uint_32*)png_ptr->riffled_palette;
+-   const png_int_32 pixels_per_chunk = 4;
+-
+-   if (row_width < pixels_per_chunk) {
+-      return 0;
+-   }
+-
+-   /* This function originally gets the last byte of the output row.
+-      The NEON part writes forward from a given position, so we have
+-      to seek this back by 4 pixels x 4 bytes. */
+-   *ddp = *ddp - ((pixels_per_chunk * sizeof(png_uint_32)) - 1);
+-
+-   int i;
+-   for (i = 0; i < row_width; i += pixels_per_chunk) {
+-      uint32x4_t cur;
+-      png_bytep sp = *ssp - i, dp = *ddp - (i << 2);
+-      cur = vld1q_dup_u32 (riffled_palette + *(sp - 3));
+-      cur = vld1q_lane_u32(riffled_palette + *(sp - 2), cur, 1);
+-      cur = vld1q_lane_u32(riffled_palette + *(sp - 1), cur, 2);
+-      cur = vld1q_lane_u32(riffled_palette + *(sp - 0), cur, 3);
+-      vst1q_u32((void *)dp, cur);
+-   }
+-   if (i != row_width) {
+-      i -= pixels_per_chunk; /* Remove the amount that wasn't processed. */
+-   }
+-
+-   /* Decrement output pointers. */
+-   *ssp = *ssp - i;
+-   *ddp = *ddp - (i << 2);
+-   return i;
+-}
+-
+-/* Expands a palettized row into RGB format. */
+-int
+-png_do_expand_palette_neon_rgb(png_structrp png_ptr, png_row_infop row_info,
+-   png_const_bytep row, const png_bytepp ssp, const png_bytepp ddp)
+-{
+-   png_uint_32 row_width = row_info->width;
+-   png_const_bytep palette = (png_const_bytep)png_ptr->palette;
+-   const png_uint_32 pixels_per_chunk = 8;
+-
+-   if (row_width <= pixels_per_chunk) {
+-      return 0;
+-   }
+-
+-   /* Seeking this back by 8 pixels x 3 bytes. */
+-   *ddp = *ddp - ((pixels_per_chunk * sizeof(png_color)) - 1);
+-
+-   int i;
+-   for (i = 0; i < row_width; i += pixels_per_chunk) {
+-      uint8x8x3_t cur;
+-      png_bytep sp = *ssp - i, dp = *ddp - ((i << 1) + i);
+-      cur = vld3_dup_u8(palette + sizeof(png_color) * (*(sp - 7)));
+-      cur = vld3_lane_u8(palette + sizeof(png_color) * (*(sp - 6)), cur, 1);
+-      cur = vld3_lane_u8(palette + sizeof(png_color) * (*(sp - 5)), cur, 2);
+-      cur = vld3_lane_u8(palette + sizeof(png_color) * (*(sp - 4)), cur, 3);
+-      cur = vld3_lane_u8(palette + sizeof(png_color) * (*(sp - 3)), cur, 4);
+-      cur = vld3_lane_u8(palette + sizeof(png_color) * (*(sp - 2)), cur, 5);
+-      cur = vld3_lane_u8(palette + sizeof(png_color) * (*(sp - 1)), cur, 6);
+-      cur = vld3_lane_u8(palette + sizeof(png_color) * (*(sp - 0)), cur, 7);
+-      vst3_u8((void *)dp, cur);
+-   }
+-
+-   if (i != row_width) {
+-      i -= pixels_per_chunk; /* Remove the amount that wasn't processed. */
+-   }
+-
+-   /* Decrement output pointers. */
+-   *ssp = *ssp - i;
+-   *ddp = *ddp - ((i << 1) + i);
+-   return i;
+-}
+-
+-#endif /* PNG_ARM_NEON_IMPLEMENTATION */
+Index: libpng1.6/pngpriv.h
+===================================================================
+--- libpng1.6.orig/pngpriv.h
++++ libpng1.6/pngpriv.h
+@@ -2117,29 +2117,6 @@
+ PNG_INTERNAL_FUNCTION(png_uint_32, png_check_keyword, (png_structrp png_ptr,
+    png_const_charp key, png_bytep new_key), PNG_EMPTY);
+ 
+-#if PNG_ARM_NEON_IMPLEMENTATION == 1
+-PNG_INTERNAL_FUNCTION(void,
+-                      png_riffle_palette_rgba,
+-                      (png_structrp, png_row_infop),
+-                      PNG_EMPTY);
+-PNG_INTERNAL_FUNCTION(int,
+-                      png_do_expand_palette_neon_rgba,
+-                      (png_structrp,
+-                       png_row_infop,
+-                       png_const_bytep,
+-                       const png_bytepp,
+-                       const png_bytepp),
+-                      PNG_EMPTY);
+-PNG_INTERNAL_FUNCTION(int,
+-                      png_do_expand_palette_neon_rgb,
+-                      (png_structrp,
+-                       png_row_infop,
+-                       png_const_bytep,
+-                       const png_bytepp,
+-                       const png_bytepp),
+-                      PNG_EMPTY);
+-#endif
+-
+ /* Maintainer: Put new private prototypes here ^ */
+ 
+ #include "pngdebug.h"
+Index: libpng1.6/pngrtran.c
+===================================================================
+--- libpng1.6.orig/pngrtran.c
++++ libpng1.6/pngrtran.c
+@@ -18,13 +18,6 @@
+ 
+ #include "pngpriv.h"
+ 
+-#ifdef PNG_ARM_NEON_IMPLEMENTATION
+-#if PNG_ARM_NEON_IMPLEMENTATION == 1
+-#define PNG_ARM_NEON_INTRINSICS_AVAILABLE
+-#include <arm_neon.h>
+-#endif
+-#endif
+-
+ #ifdef PNG_READ_SUPPORTED
+ 
+ /* Set the action on getting a CRC error for an ancillary or critical chunk. */
+@@ -4202,9 +4195,8 @@
+  * upon whether you supply trans and num_trans.
+  */
+ static void
+-png_do_expand_palette(png_structrp png_ptr, png_row_infop row_info,
+-   png_bytep row, png_const_colorp palette, png_const_bytep trans_alpha,
+-   int num_trans)
++png_do_expand_palette(png_row_infop row_info, png_bytep row,
++    png_const_colorp palette, png_const_bytep trans_alpha, int num_trans)
+ {
+    int shift, value;
+    png_bytep sp, dp;
+@@ -4308,22 +4300,14 @@
+                sp = row + (size_t)row_width - 1;
+                dp = row + ((size_t)row_width << 2) - 1;
+ 
+-               i = 0;
+-#ifdef PNG_ARM_NEON_INTRINSICS_AVAILABLE
+-               if (png_ptr->riffled_palette != NULL) {
+-                  /* The RGBA optimization works with png_ptr->bit_depth == 8
+-                     but sometimes row_info->bit_depth has been changed to 8.
+-                     In these cases, the palette hasn't been riffled. */
+-                  i = png_do_expand_palette_neon_rgba(png_ptr, row_info, row, &sp, &dp);
+-               }
+-#endif
+-
+-               for (; i < row_width; i++)
++               for (i = 0; i < row_width; i++)
+                {
+                   if ((int)(*sp) >= num_trans)
+                      *dp-- = 0xff;
++
+                   else
+                      *dp-- = trans_alpha[*sp];
++
+                   *dp-- = palette[*sp].blue;
+                   *dp-- = palette[*sp].green;
+                   *dp-- = palette[*sp].red;
+@@ -4340,12 +4324,8 @@
+             {
+                sp = row + (size_t)row_width - 1;
+                dp = row + (size_t)(row_width * 3) - 1;
+-               i = 0;
+-#ifdef PNG_ARM_NEON_INTRINSICS_AVAILABLE
+-               i = png_do_expand_palette_neon_rgb(png_ptr, row_info, row, &sp, &dp);
+-#endif
+ 
+-               for (; i < row_width; i++)
++               for (i = 0; i < row_width; i++)
+                {
+                   *dp-- = palette[*sp].blue;
+                   *dp-- = palette[*sp].green;
+@@ -4759,21 +4739,8 @@
+    {
+       if (row_info->color_type == PNG_COLOR_TYPE_PALETTE)
+       {
+-#ifdef PNG_ARM_NEON_INTRINSICS_AVAILABLE
+-       if ((png_ptr->num_trans > 0) && (png_ptr->bit_depth == 8)) {
+-          /* Allocate space for the decompressed full palette. */
+-          if (png_ptr->riffled_palette == NULL) {
+-              png_ptr->riffled_palette = png_malloc(png_ptr, 256*4);
+-              if (png_ptr->riffled_palette == NULL) {
+-                  png_error(png_ptr, "NULL row buffer");
+-              }
+-              /* Build the RGBA palette. */
+-              png_riffle_palette_rgba(png_ptr, row_info);
+-          }
+-       }
+-#endif
+-         png_do_expand_palette(png_ptr, row_info, png_ptr->row_buf + 1,
+-            png_ptr->palette, png_ptr->trans_alpha, png_ptr->num_trans);
++         png_do_expand_palette(row_info, png_ptr->row_buf + 1,
++             png_ptr->palette, png_ptr->trans_alpha, png_ptr->num_trans);
+       }
+ 
+       else
+Index: libpng1.6/pngstruct.h
+===================================================================
+--- libpng1.6.orig/pngstruct.h
++++ libpng1.6/pngstruct.h
+@@ -228,10 +228,6 @@
+                                * big_row_buf; while writing it is separately
+                                * allocated.
+                                */
+-#ifdef PNG_READ_EXPAND_SUPPORTED
+-   /* Buffer to accelerate palette transformations. */
+-   png_bytep riffled_palette;
+-#endif
+ #ifdef PNG_WRITE_FILTER_SUPPORTED
+    png_bytep try_row;    /* buffer to save trial row when filtering */
+    png_bytep tst_row;    /* buffer to save best trial row when filtering */
+Index: libpng1.6/pngwrite.c
+===================================================================
+--- libpng1.6.orig/pngwrite.c
++++ libpng1.6/pngwrite.c
+@@ -948,10 +948,6 @@
+    png_free_buffer_list(png_ptr, &png_ptr->zbuffer_list);
+    png_free(png_ptr, png_ptr->row_buf);
+    png_ptr->row_buf = NULL;
+-#ifdef PNG_READ_EXPANDED_SUPPORTED
+-   png_free(png_ptr, png_ptr->riffled_palette);
+-   png_ptr->riffled_palette = NULL;
+-#endif
+ #ifdef PNG_WRITE_FILTER_SUPPORTED
+    png_free(png_ptr, png_ptr->prev_row);
+    png_free(png_ptr, png_ptr->try_row);
