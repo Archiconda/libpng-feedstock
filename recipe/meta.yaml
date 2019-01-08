@@ -9,13 +9,13 @@ source:
   sha256: ca13c548bde5fb6ff7117cc0bdab38808acb699c0eccb613f0e4697826e1fd7d
   patches:
     - 0001-Include-pkg-config-files-in-the-Windows-packages-too.patch
-    # Tests fail on aarch64 due to some optimizations 
+    # Tests fail on aarch64 due to some optimizations
     # https://github.com/glennrp/libpng/issues/266
     # patches were taken from debian
     # https://sources.debian.org/src/libpng1.6/1.6.36-2/debian/patches/
     - revert-1ceaa83a844cd3ecef25279d60720f910b96f297.patch
-    - revert-7734cda20cf1236aef60f3bbd2267c97bbb40869.patch
     - revert-b66ed711315c46ef6c556c83c0074ecdcbd9937f.patch
+    - revert-7734cda20cf1236aef60f3bbd2267c97bbb40869.patchg
 
 build:
   number: 1000
