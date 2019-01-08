@@ -1,6 +1,8 @@
 About libpng
 ============
 
+[![Powered by NumFOCUS](https://img.shields.io/badge/powered%20by-NumFOCUS-orange.svg?style=flat&colorA=E1523D&colorB=007D8A)](http://numfocus.org)
+
 Home: http://www.libpng.org/pub/png/libpng.html
 
 Package license: zlib/libpng
@@ -19,6 +21,7 @@ Current build status
 [![Linux](https://img.shields.io/circleci/project/github/conda-forge/libpng-feedstock/master.svg?label=Linux)](https://circleci.com/gh/conda-forge/libpng-feedstock)
 [![OSX](https://img.shields.io/travis/conda-forge/libpng-feedstock/master.svg?label=macOS)](https://travis-ci.org/conda-forge/libpng-feedstock)
 [![Windows](https://img.shields.io/appveyor/ci/conda-forge/libpng-feedstock/master.svg?label=Windows)](https://ci.appveyor.com/project/conda-forge/libpng-feedstock/branch/master)
+[![linux-aarch64](https://img.shields.io/shippable/5c3427514e246e0700cfbc67/aarch64.svg?label=linux-aarch64)](https://app.shippable.com/github/Archiconda/libpng-feedstock)
 
 Current release info
 ====================
@@ -106,3 +109,11 @@ In order to produce a uniquely identifiable distribution:
  * If the version of a package **is** being increased, please remember to return
    the [``build/number``](https://conda.io/docs/user-guide/tasks/build-packages/define-metadata.html#build-number-and-string)
    back to 0.
+
+Feedstock Maintainers
+=====================
+
+* [@msarahan](https://github.com/msarahan/)
+* [@ocefpaf](https://github.com/ocefpaf/)
+* [@pkgw](https://github.com/pkgw/)
+
