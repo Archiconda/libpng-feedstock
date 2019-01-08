@@ -28,6 +28,7 @@ requirements:
     - cmake  # [win]
     - m2-patch  # [win]
     - libtool  # [not win]
+    - autoconf  # [not win]
     - automake  # [not win]
     - {{ compiler('c') }}
     - make      # [not win]

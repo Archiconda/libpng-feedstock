@@ -4,6 +4,8 @@ set -ex
 export CFLAGS="$CFLAGS -I$PREFIX/include -L$PREFIX/lib"
 export CPPFLAGS="$CPPFLAGS -I$PREFIX/include"
 
+autoreconf
+
 ./configure --prefix=$PREFIX \
             --with-zlib-prefix=$PREFIX
 
