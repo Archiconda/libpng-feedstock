@@ -6,7 +6,7 @@ Date:   Tue Sep 4 00:53:38 2018 -0400
 
 Index: libpng1.6/arm/filter_neon_intrinsics.c
 ===================================================================
---- libpng1.6.orig/arm/filter_neon_intrinsics.c
+--- libpng1.6/arm/filter_neon_intrinsics.c
 +++ libpng1.6/arm/filter_neon_intrinsics.c
 @@ -19,9 +19,9 @@
  #if PNG_ARM_NEON_IMPLEMENTATION == 1 /* intrinsics code from pngpriv.h */
@@ -22,7 +22,7 @@ Index: libpng1.6/arm/filter_neon_intrinsics.c
  /* libpng row pointers are not necessarily aligned to any particular boundary,
 Index: libpng1.6/arm/palette_neon_intrinsics.c
 ===================================================================
---- libpng1.6.orig/arm/palette_neon_intrinsics.c
+--- libpng1.6/arm/palette_neon_intrinsics.c
 +++ libpng1.6/arm/palette_neon_intrinsics.c
 @@ -1,7 +1,5 @@
 -
@@ -47,7 +47,7 @@ Index: libpng1.6/arm/palette_neon_intrinsics.c
  void
 Index: libpng1.6/pngrtran.c
 ===================================================================
---- libpng1.6.orig/pngrtran.c
+--- libpng1.6/pngrtran.c
 +++ libpng1.6/pngrtran.c
 @@ -19,14 +19,10 @@
  #include "pngpriv.h"
